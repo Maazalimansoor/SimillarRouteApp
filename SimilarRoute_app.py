@@ -14,49 +14,61 @@ st.title("🏭 ALPHA MEASUREMENT SOLUTIONS - Similar Route Finder")
 st.markdown("### Advanced Manufacturing Similarity Analytics System")
 
 # ================= FILE SETTINGS =================
-excel_file = r"C:\Users\maaz.mansoor\OneDrive - AlpHa Measurement Solutions\Desktop\SimillarRouteApp\Route File Lean.xlsx"
+import os
+
+BASE_DIR = os.path.dirname(__file__)  # path of the script
+excel_file = os.path.join(BASE_DIR, "Route File Lean.xlsx")  # relative path to Excel in repo
 
 # ================= LOAD DATA =================
 @st.cache_data(show_spinner=False)
 def load_data(path):
-    apnrn = pd.read_excel(path, sheet_name="apnrn", usecols=["partno","routeno"])
-    rodetail = pd.read_excel(path, sheet_name="rodetail", usecols=["routeno","laborgrade","cycletime"])
-    immaster = pd.read_excel(path, sheet_name="immaster",
-                             usecols=["item","descrip","prodclas","misc02","misc05","misc10","misccode"])
+    try:
+        apnrn = pd.read_excel(path, sheet_name="apnrn", usecols=["partno","routeno"])
+        rodetail = pd.read_excel(path, sheet_name="rodetail", usecols=["routeno","laborgrade","cycletime"])
+        immaster = pd.read_excel(path, sheet_name="immaster",
+                                 usecols=["item","descrip","prodclas","misc02","misc05","misc10","misccode"])
 
-    # ---- CLEAN DATA ----
-    apnrn['partno'] = apnrn['partno'].astype(str).str.strip()
-    immaster['item'] = immaster['item'].astype(str).str.strip()
-    rodetail['cycletime'] = pd.to_numeric(rodetail['cycletime'], errors='coerce').fillna(0)
-    rodetail['laborgrade'] = rodetail['laborgrade'].astype(str).str.upper().str.strip()
+        # ---- CLEAN DATA ----
+        apnrn['partno'] = apnrn['partno'].astype(str).str.strip()
+        immaster['item'] = immaster['item'].astype(str).str.strip()
+        rodetail['cycletime'] = pd.to_numeric(rodetail['cycletime'], errors='coerce').fillna(0)
+        rodetail['laborgrade'] = rodetail['laborgrade'].astype(str).str.upper().str.strip()
 
-    # ---- TOTAL ROUTE TIME ----
-    route_times = rodetail.groupby('routeno')['cycletime'].sum().reset_index(name='TotalCycleTime')
-    for grade in ['FA1','CA1','ER1']:
-        df = rodetail[rodetail['laborgrade']==grade] \
-                .groupby('routeno')['cycletime'] \
-                .sum() \
-                .reset_index(name=f'{grade}_Time')
-        route_times = route_times.merge(df, on='routeno', how='left')
+        # ---- TOTAL ROUTE TIME ----
+        route_times = rodetail.groupby('routeno')['cycletime'].sum().reset_index(name='TotalCycleTime')
+        for grade in ['FA1','CA1','ER1']:
+            df = rodetail[rodetail['laborgrade']==grade] \
+                    .groupby('routeno')['cycletime'] \
+                    .sum() \
+                    .reset_index(name=f'{grade}_Time')
+            route_times = route_times.merge(df, on='routeno', how='left')
 
-    route_times.fillna(0, inplace=True)
-    route_times['FA_CA_ER_Total'] = route_times[['FA1_Time','CA1_Time','ER1_Time']].sum(axis=1)
+        route_times.fillna(0, inplace=True)
+        route_times['FA_CA_ER_Total'] = route_times[['FA1_Time','CA1_Time','ER1_Time']].sum(axis=1)
 
-    # ---- MERGE ----
-    data = apnrn.merge(route_times, on='routeno', how='left')
-    immaster = immaster.rename(columns={
-        "item":"PartNumber",
-        "descrip":"Description",
-        "prodclas":"ProdClas",
-        "misc02":"Misc02",
-        "misc05":"Misc05",
-        "misc10":"Misc10",
-        "misccode":"MiscCode"
-    })
-    data = data.merge(immaster, left_on='partno', right_on='PartNumber', how='left')
-    data.rename(columns={"partno":"PartNumber","routeno":"RouteNo"}, inplace=True)
-    data = data.loc[:,~data.columns.duplicated()].copy()
-    return data
+        # ---- MERGE ----
+        data = apnrn.merge(route_times, on='routeno', how='left')
+        immaster = immaster.rename(columns={
+            "item":"PartNumber",
+            "descrip":"Description",
+            "prodclas":"ProdClas",
+            "misc02":"Misc02",
+            "misc05":"Misc05",
+            "misc10":"Misc10",
+            "misccode":"MiscCode"
+        })
+        data = data.merge(immaster, left_on='partno', right_on='PartNumber', how='left')
+        data.rename(columns={"partno":"PartNumber","routeno":"RouteNo"}, inplace=True)
+        data = data.loc[:,~data.columns.duplicated()].copy()
+        return data
+
+    except FileNotFoundError:
+        st.error(f"Excel file not found at: {path}")
+        return pd.DataFrame()  # prevent crash
+    except Exception as e:
+        st.error(f"Error loading Excel file: {e}")
+        return pd.DataFrame()
+
 
 # ================= EXCEL REFRESH =================
 if st.button("🔄 Refresh Excel File"):
